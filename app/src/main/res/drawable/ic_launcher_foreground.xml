@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Subtle Centered Zen Mindfulness Circle Frame (Safe Zone Diameter ~66dp) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:fillColor="#00000000"
+        android:pathData="M54,26 A28,28 0 1,1 53.99,26 Z"
+        android:strokeAlpha="0.87" />
+
+    <!-- Minimalist Hourglass Elements -->
+    <!-- Top & Bottom Plates -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,36 h24 v2 h-24 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,70 h24 v2 h-24 z" />
+
+    <!-- Top & Bottom Hourglass Bulb glass bodies -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:pathData="M44,38 h20 c0,0 -2,10 -10,14 c-8,-4 -10,-14 -10,-14 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:pathData="M44,70 h20 c0,0 -2,-10 -10,-14 c-8,4 -10,14 -10,14 z" />
+
+    <!-- Pure Teal Active Focal Sand Dot (Aesthetic contrast) -->
+    <path
+        android:fillColor="#0D9488"
+        android:pathData="M53.25,53.25 h1.5 v1.5 h-1.5 z" />
+</vector>

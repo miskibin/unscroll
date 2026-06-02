@@ -1,0 +1,6 @@
+{
+  "name": "ZenDelay",
+  "description": "Aplikacja opóźniająca uruchamianie Instagrama i TikToka, pomagająca przełamać nawyk bezmyślnego doomscrollowania za pomocą ćwiczeń oddechowych.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
