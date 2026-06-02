@@ -293,7 +293,7 @@ fun DashboardScreen(
                             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
                             .clickable {
                                 val testIntent = Intent(context, DelayActivity::class.java).apply {
-                                    putExtra("target_package", "com.instagram.android")
+                                    putExtra(DelayActivity.EXTRA_TARGET_PACKAGE, "com.instagram.android")
                                 }
                                 context.startActivity(testIntent)
                             },

@@ -1,139 +1,109 @@
 package com.example.data
 
-import android.util.Log
-
+/**
+ * The single source of truth for "is the user currently allowed into a blocked app".
+ *
+ * Only one app is ever in the foreground, so we only ever track one grant at a time.
+ * The model is intentionally tiny:
+ *
+ *  - A *grant* is created when the user finishes the conscious pause. It stays valid
+ *    while the app is in the foreground, and survives a short [RETURN_GRACE_MS] window
+ *    after the user leaves so quick app-switches (opening a shared link, answering a
+ *    notification) don't force a brand-new pause.
+ *  - A *cooldown* is an optional lock that blocks the app for a while once a usage
+ *    session runs out.
+ *
+ * Everything is guarded by `@Synchronized` because the accessibility service and the
+ * pause activity touch it from different threads.
+ */
 object AppDelayManager {
-    private const val TAG = "AppDelayManager"
-    private var whitelistedPackage: String? = null
-    private var whitelistExpirationTime: Long = 0L
 
-    // Safe session grace period (30 seconds)
-    private const val SESSION_GRACE_PERIOD_MS = 30000L
+    /** Grace window after leaving a granted app during which re-entry needs no new pause. */
+    private const val RETURN_GRACE_MS = 20_000L
 
-    // Cooldown & Usage Limit States
-    private var activeSessionPackage: String? = null
-    private var sessionStartMs: Long = 0L
-    private var sessionLimitMs: Long = 0L
+    /** Minimum gap between two pause screens, so a burst of window events can't stack them. */
+    private const val PAUSE_RATE_LIMIT_MS = 1_500L
+
+    /** Sentinel meaning "valid as long as the app stays in the foreground". */
+    private const val FOREGROUND = Long.MAX_VALUE
+
+    private var grantedPackage: String? = null
+    private var grantValidUntil: Long = 0L
+    private var sessionStartedAt: Long = 0L
+
     private var cooldownPackage: String? = null
-    private var cooldownUntilMs: Long = 0L
+    private var cooldownUntil: Long = 0L
 
-    // Prevention of rapid activity spawning / multi-triggers
-    private var isDelayActivityActive = false
-    private var lastTriggerTime: Long = 0L
+    private var lastPauseShownAt: Long = 0L
+
+    private fun now() = System.currentTimeMillis()
+
+    // --- Access grant ---------------------------------------------------------
 
     @Synchronized
-    fun setDelayActivityActive(active: Boolean) {
-        isDelayActivityActive = active
-        Log.d(TAG, "DelayActivity active state changed to: $active")
+    fun isAccessGranted(pkg: String): Boolean =
+        pkg == grantedPackage && now() < grantValidUntil
+
+    /** The user completed the pause; let them into [pkg] and start a usage session. */
+    @Synchronized
+    fun grantAccess(pkg: String) {
+        grantedPackage = pkg
+        grantValidUntil = FOREGROUND
+        sessionStartedAt = now()
+    }
+
+    /** [pkg] is in the foreground right now; keep its grant from lapsing. */
+    @Synchronized
+    fun keepAlive(pkg: String) {
+        if (pkg == grantedPackage) grantValidUntil = FOREGROUND
+    }
+
+    /** The user just left [pkg]; if it was granted, start the short return grace. */
+    @Synchronized
+    fun onLeftForeground(pkg: String) {
+        if (pkg == grantedPackage && grantValidUntil == FOREGROUND) {
+            grantValidUntil = now() + RETURN_GRACE_MS
+        }
+    }
+
+    /** Milliseconds left in the current usage session for [pkg], 0 if none. */
+    @Synchronized
+    fun sessionRemainingMs(pkg: String, limitMinutes: Int): Long {
+        if (pkg != grantedPackage) return 0L
+        return (sessionStartedAt + limitMinutes * 60_000L - now()).coerceAtLeast(0L)
     }
 
     @Synchronized
-    fun isDelayActivityActive(): Boolean = isDelayActivityActive
+    fun clearGrant() {
+        grantedPackage = null
+        grantValidUntil = 0L
+        sessionStartedAt = 0L
+    }
+
+    // --- Cooldown -------------------------------------------------------------
+
+    /** Milliseconds left on an active cooldown for [pkg], 0 if it isn't locked. */
+    @Synchronized
+    fun cooldownRemainingMs(pkg: String): Long {
+        val remaining = cooldownUntil - now()
+        return if (pkg == cooldownPackage && remaining > 0L) remaining else 0L
+    }
 
     @Synchronized
-    fun canTriggerDelay(): Boolean {
-        if (isDelayActivityActive) {
-            Log.d(TAG, "Preventing trigger: DelayActivity is already active")
-            return false
-        }
-        val now = System.currentTimeMillis()
-        if (now - lastTriggerTime < 1500L) {
-            Log.d(TAG, "Preventing trigger: Cooldown rate-limit between consecutive launches (${now - lastTriggerTime} ms)")
-            return false
-        }
-        lastTriggerTime = now
+    fun startCooldown(pkg: String, minutes: Int) {
+        cooldownPackage = pkg
+        cooldownUntil = now() + minutes * 60_000L
+        clearGrant()
+    }
+
+    // --- Pause rate-limiting --------------------------------------------------
+
+    /** True if enough time has passed to show another pause screen (and records it). */
+    @Synchronized
+    fun canShowPause(): Boolean {
+        val t = now()
+        if (t - lastPauseShownAt < PAUSE_RATE_LIMIT_MS) return false
+        lastPauseShownAt = t
         return true
-    }
-
-    @Synchronized
-    fun isWhitelisted(packageName: String): Boolean {
-        val currentTime = System.currentTimeMillis()
-        
-        // If they are in active cooldown, they are absolutely NOT whitelisted
-        if (currentTime < cooldownUntilMs && packageName == cooldownPackage) {
-            Log.d(TAG, "Package $packageName is in active cooldown")
-            return false
-        }
-
-        val isOk = packageName == whitelistedPackage && currentTime < whitelistExpirationTime
-        if (isOk) {
-            Log.d(TAG, "Package $packageName is whitelisted. Time scale: ${whitelistExpirationTime - currentTime} ms remaining.")
-        }
-        return isOk
-    }
-
-    @Synchronized
-    fun whitelistPackage(packageName: String, durationMs: Long = 24 * 60 * 60 * 1000L) {
-        val currentTime = System.currentTimeMillis()
-        whitelistedPackage = packageName
-        // Enable full daily block-free active usage by default
-        whitelistExpirationTime = currentTime + durationMs
-        Log.d(TAG, "Whitelisted package $packageName for active usage session")
-    }
-
-    @Synchronized
-    fun startSession(packageName: String, limitMinutes: Int) {
-        activeSessionPackage = packageName
-        sessionStartMs = System.currentTimeMillis()
-        sessionLimitMs = limitMinutes * 60 * 1000L
-        Log.d(TAG, "Started active usage session for $packageName, limit is $limitMinutes min")
-    }
-
-    @Synchronized
-    fun checkSessionExceeded(packageName: String): Boolean {
-        if (packageName == activeSessionPackage && sessionStartMs > 0L) {
-            val elapsed = System.currentTimeMillis() - sessionStartMs
-            return elapsed > sessionLimitMs
-        }
-        return false
-    }
-
-    @Synchronized
-    fun triggerCooldown(packageName: String, cooldownMinutes: Int) {
-        cooldownPackage = packageName
-        cooldownUntilMs = System.currentTimeMillis() + (cooldownMinutes * 60 * 1000L)
-        activeSessionPackage = null
-        sessionStartMs = 0L
-        clearWhitelist()
-        Log.d(TAG, "Triggered cooldown for $packageName for $cooldownMinutes minutes")
-    }
-
-    @Synchronized
-    fun getCooldownRemainingMs(packageName: String): Long {
-        val now = System.currentTimeMillis()
-        return if (packageName == cooldownPackage && now < cooldownUntilMs) {
-            cooldownUntilMs - now
-        } else {
-            0L
-        }
-    }
-
-    @Synchronized
-    fun recordEntering(packageName: String) {
-        if (packageName == whitelistedPackage) {
-            val now = System.currentTimeMillis()
-            if (now < cooldownUntilMs && packageName == cooldownPackage) {
-                // If in cooldown, they cannot re-enter whitelisted state
-                return
-            }
-            // Restore full block-free active usage session when returning
-            whitelistExpirationTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000L
-            Log.d(TAG, "User active in $packageName, extended whitelist session")
-        }
-    }
-
-    @Synchronized
-    fun recordExit() {
-        if (whitelistedPackage != null && whitelistExpirationTime > System.currentTimeMillis() + SESSION_GRACE_PERIOD_MS) {
-            // Set expiration to 30 seconds from now when they leave
-            whitelistExpirationTime = System.currentTimeMillis() + SESSION_GRACE_PERIOD_MS
-            Log.d(TAG, "User exited whitelisted package $whitelistedPackage, grace period started: 30 seconds")
-        }
-    }
-
-    @Synchronized
-    fun clearWhitelist() {
-        whitelistedPackage = null
-        whitelistExpirationTime = 0
     }
 }
