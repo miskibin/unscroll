@@ -20,6 +20,9 @@ class SettingRepository(private val settingDao: SettingDao) {
 
         const val KEY_COOLDOWN_PERIOD_MINUTES = "cooldown_period_minutes"
         const val DEFAULT_COOLDOWN_PERIOD_MINUTES = 10
+
+        const val KEY_INTENTION_PLAN = "intention_plan"
+        const val DEFAULT_INTENTION_PLAN = ""
     }
 
     val delaySecondsFlow: Flow<Int> = settingDao.getSettingFlow(KEY_DELAY_SECONDS)
@@ -45,6 +48,11 @@ class SettingRepository(private val settingDao: SettingDao) {
     val cooldownPeriodMinutesFlow: Flow<Int> = settingDao.getSettingFlow(KEY_COOLDOWN_PERIOD_MINUTES)
         .map { setting ->
             setting?.value?.toIntOrNull() ?: DEFAULT_COOLDOWN_PERIOD_MINUTES
+        }
+
+    val intentionPlanFlow: Flow<String> = settingDao.getSettingFlow(KEY_INTENTION_PLAN)
+        .map { setting ->
+            setting?.value ?: DEFAULT_INTENTION_PLAN
         }
 
     suspend fun getDelaySeconds(): Int {
@@ -85,5 +93,13 @@ class SettingRepository(private val settingDao: SettingDao) {
 
     suspend fun setCooldownPeriodMinutes(minutes: Int) {
         settingDao.insertSetting(Setting(KEY_COOLDOWN_PERIOD_MINUTES, minutes.toString()))
+    }
+
+    suspend fun getIntentionPlan(): String {
+        return settingDao.getSetting(KEY_INTENTION_PLAN)?.value ?: DEFAULT_INTENTION_PLAN
+    }
+
+    suspend fun setIntentionPlan(plan: String) {
+        settingDao.insertSetting(Setting(KEY_INTENTION_PLAN, plan))
     }
 }

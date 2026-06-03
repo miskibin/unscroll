@@ -19,6 +19,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val cooldownEnabled: StateFlow<Boolean>
     val cooldownUsageMinutes: StateFlow<Int>
     val cooldownPeriodMinutes: StateFlow<Int>
+    val intentionPlan: StateFlow<String>
 
     init {
         val database = AppDatabase.getDatabase(application)
@@ -58,6 +59,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 started = SharingStarted.WhileSubscribed(5000L),
                 initialValue = SettingRepository.DEFAULT_COOLDOWN_PERIOD_MINUTES
             )
+
+        intentionPlan = repository.intentionPlanFlow
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000L),
+                initialValue = SettingRepository.DEFAULT_INTENTION_PLAN
+            )
     }
 
     fun updateDelaySeconds(seconds: Int) {
@@ -87,6 +95,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateCooldownPeriodMinutes(minutes: Int) {
         viewModelScope.launch {
             repository.setCooldownPeriodMinutes(minutes)
+        }
+    }
+
+    fun updateIntentionPlan(plan: String) {
+        viewModelScope.launch {
+            repository.setIntentionPlan(plan)
         }
     }
 }
