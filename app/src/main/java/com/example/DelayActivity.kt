@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.example.data.AppDatabase
 import com.example.data.AppDelayManager
+import com.example.data.EventLogger
+import com.example.data.EventOutcome
 import com.example.data.Quiz
 import com.example.data.QuizGenerator
 import com.example.data.SettingRepository
@@ -74,14 +76,20 @@ class DelayActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding),
-                        onDelayFinished = {
+                        onEnter = { reasonName ->
+                            EventLogger.log(this, EventOutcome.ENTERED, reasonName)
                             launchTargetApp()
                         },
-                        onCancel = {
+                        onTurnAway = { reasonName ->
+                            EventLogger.log(this, EventOutcome.TURNED_AWAY, reasonName)
                             goHomeAndFinish()
                         },
                         onEarnedReward = {
+                            EventLogger.log(this, EventOutcome.BONUS, null)
                             earnBonusTimeAndLaunch()
+                        },
+                        onCooldownEnded = {
+                            goHomeAndFinish()
                         }
                     )
                 }
@@ -231,9 +239,10 @@ fun DelayScreen(
     isCooldownMode: Boolean,
     initialCooldownMs: Long,
     modifier: Modifier = Modifier,
-    onDelayFinished: () -> Unit,
-    onCancel: () -> Unit,
-    onEarnedReward: () -> Unit = {}
+    onEnter: (reasonName: String?) -> Unit,
+    onTurnAway: (reasonName: String?) -> Unit,
+    onEarnedReward: () -> Unit = {},
+    onCooldownEnded: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var totalSeconds by remember { mutableStateOf(5) }
@@ -281,7 +290,7 @@ fun DelayScreen(
                 delay(1000L)
                 cooldownRemainingSec--
             }
-            onCancel() // Close the focus-block screen once it naturally ends
+            onCooldownEnded() // Close the focus-block screen once it naturally ends
         } else {
             if (reason == null) return@LaunchedEffect // still on the intention step
             secondsLeft = effectiveSeconds
@@ -301,7 +310,7 @@ fun DelayScreen(
                 delay(1000L)
             }
             secondsLeft = 0
-            onDelayFinished()
+            onEnter(reason?.name?.lowercase())
         }
     }
 
@@ -500,7 +509,7 @@ fun DelayScreen(
                     )
                 }
                 OutlinedButton(
-                    onClick = onCancel,
+                    onClick = { onTurnAway(null) },
                     shape = RoundedCornerShape(8.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
@@ -517,7 +526,7 @@ fun DelayScreen(
                 }
             } else {
                 Button(
-                    onClick = onCancel,
+                    onClick = { onTurnAway(reason?.name?.lowercase()) },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
                         contentColor = Color.Black

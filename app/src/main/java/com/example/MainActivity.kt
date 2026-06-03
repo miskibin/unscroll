@@ -34,8 +34,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.AppDelayManager
+import com.example.data.Insights
+import com.example.data.LoggedEvent
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,6 +88,7 @@ fun DashboardScreen(
     val cooldownUsageMinutes by viewModel.cooldownUsageMinutes.collectAsState()
     val cooldownPeriodMinutes by viewModel.cooldownPeriodMinutes.collectAsState()
     val intentionPlan by viewModel.intentionPlan.collectAsState()
+    val recentEvents by viewModel.recentEvents.collectAsState()
 
     var isServiceEnabled by remember { mutableStateOf(false) }
 
@@ -230,6 +234,16 @@ fun DashboardScreen(
                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
             }
 
+            // Self-monitoring: reflect the user's own moments back to them
+            item {
+                InsightsSection(events = recentEvents)
+            }
+
+            // Divider
+            item {
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
+            }
+
             // Emergency disable back door
             item {
                 EmergencyDisableSection()
@@ -346,6 +360,91 @@ fun DashboardScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun InsightsSection(events: List<LoggedEvent>) {
+    val now = System.currentTimeMillis()
+    val today = Insights.summarize(events, Insights.startOfToday(now))
+    val week = Insights.summarize(events, now - 7L * 24 * 60 * 60 * 1000)
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "TWOJE CHWILE",
+            color = Color.White.copy(alpha = 0.4f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp
+        )
+
+        if (week.attempts == 0) {
+            Text(
+                text = "Gdy zaczniesz korzystać, pojawią się tu Twoje wzorce — bez oceniania.",
+                color = Color.White.copy(alpha = 0.45f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Light
+            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatTile(
+                    modifier = Modifier.weight(1f),
+                    value = today.turnedAway.toString(),
+                    label = "odpuszczone dziś"
+                )
+                StatTile(
+                    modifier = Modifier.weight(1f),
+                    value = week.turnedAway.toString(),
+                    label = "w ciągu 7 dni"
+                )
+            }
+            Text(
+                text = "Odpuszczasz ${(week.turnAwayRate * 100).roundToInt()}% otwarć w tym tygodniu. Każde z nich to chwila dla siebie.",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                fontWeight = FontWeight.Light
+            )
+            val mindless = (week.byReason["browsing"] ?: 0) + (week.byReason["bored"] ?: 0)
+            if (mindless > 0) {
+                Text(
+                    text = "Z nudów lub bez celu: $mindless otwarć. Tu jest największy zysk.",
+                    color = Color.White.copy(alpha = 0.45f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Light
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatTile(modifier: Modifier = Modifier, value: String, label: String) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+            .padding(vertical = 16.dp, horizontal = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.W200
+        )
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.4f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Normal
+        )
     }
 }
 
