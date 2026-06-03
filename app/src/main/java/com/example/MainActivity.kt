@@ -84,6 +84,7 @@ fun DashboardScreen(
     val cooldownEnabled by viewModel.cooldownEnabled.collectAsState()
     val cooldownUsageMinutes by viewModel.cooldownUsageMinutes.collectAsState()
     val cooldownPeriodMinutes by viewModel.cooldownPeriodMinutes.collectAsState()
+    val intentionPlan by viewModel.intentionPlan.collectAsState()
 
     var isServiceEnabled by remember { mutableStateOf(false) }
 
@@ -252,6 +253,19 @@ fun DashboardScreen(
                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
             }
 
+            // If-then intention plan
+            item {
+                IntentionSection(
+                    plan = intentionPlan,
+                    onPlanChanged = { viewModel.updateIntentionPlan(it) }
+                )
+            }
+
+            // Divider
+            item {
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
+            }
+
             // Custom Blocked Packages Area
             item {
                 BlockedPackagesSection(
@@ -330,6 +344,74 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun IntentionSection(
+    plan: String,
+    onPlanChanged: (String) -> Unit
+) {
+    var draft by remember(plan) { mutableStateOf(plan) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "TWÓJ PLAN „JEŚLI–TO”",
+            color = Color.White.copy(alpha = 0.4f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp
+        )
+        Text(
+            text = "Zaplanuj, co zrobisz zamiast przewijać. Przypomnimy Ci to w chwili pokusy.",
+            color = Color.White.copy(alpha = 0.45f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Light
+        )
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            placeholder = {
+                Text(
+                    "np. Jeśli sięgam po telefon z nudów, to zrobię 10 przysiadów",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.25f)
+                )
+            },
+            minLines = 2,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                focusedBorderColor = Color.White.copy(alpha = 0.4f),
+                unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent
+            ),
+            shape = RoundedCornerShape(6.dp),
+            modifier = Modifier.fillMaxWidth(),
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp)
+        )
+        if (draft.trim() != plan) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.White)
+                    .clickable { onPlanChanged(draft.trim()) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Zapisz plan",
+                    color = Color.Black,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
@@ -667,14 +749,14 @@ fun CooldownConfigSection(
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = "OGRANICZENIE SESJI (COOLDOWN)",
+                    text = "BLOK SKUPIENIA PO LIMICIE",
                     color = Color.White.copy(alpha = 0.4f),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.5.sp
                 )
                 Text(
-                    text = "Blokuj aplikację po wykorzystaniu limitu",
+                    text = "Po wykorzystaniu czasu zrób sobie przerwę od aplikacji",
                     color = Color.White.copy(alpha = 0.45f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Light
@@ -740,7 +822,7 @@ fun CooldownConfigSection(
 
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "Czas trwania blokady (cooldown):",
+                        text = "Długość przerwy:",
                         color = Color.White.copy(alpha = 0.5f),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Light

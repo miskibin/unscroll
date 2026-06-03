@@ -150,6 +150,81 @@ class DelayActivity : ComponentActivity() {
     }
 }
 
+/** Why the user is opening a blocked app. Purposeful reasons get a much lighter pause. */
+enum class EntryReason { MESSAGE, SPECIFIC, BROWSING, BORED }
+
+/**
+ * Step one of the pause: a single, judgement-free question. Naming the intention is itself an
+ * evidence-backed nudge (implementation intentions + self-monitoring), and giving purposeful uses
+ * a fast lane avoids the reactance and false-positives that make blockers get uninstalled.
+ */
+@Composable
+private fun IntentionScreen(
+    appDisplayName: String,
+    modifier: Modifier = Modifier,
+    onPick: (EntryReason) -> Unit
+) {
+    Column(
+        modifier = modifier
+            .background(Color(0xFF000000))
+            .padding(horizontal = 28.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "ZANIM WEJDZIESZ",
+            color = Color.White.copy(alpha = 0.4f),
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            letterSpacing = 2.sp
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(
+            text = "Po co otwierasz $appDisplayName?",
+            color = Color.White,
+            fontSize = 23.sp,
+            fontWeight = FontWeight.Light,
+            textAlign = TextAlign.Center,
+            lineHeight = 30.sp
+        )
+        Spacer(modifier = Modifier.height(36.dp))
+
+        listOf(
+            EntryReason.MESSAGE to "Napisać do kogoś",
+            EntryReason.SPECIFIC to "Sprawdzić coś konkretnego",
+            EntryReason.BROWSING to "Tylko przeglądam",
+            EntryReason.BORED to "Z nudów / odruchowo"
+        ).forEach { (entryReason, label) ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 5.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                    .clickable { onPick(entryReason) }
+                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    text = label,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            text = "Sama ta chwila zastanowienia już działa.",
+            color = Color.White.copy(alpha = 0.35f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Light,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
 @Composable
 fun DelayScreen(
     targetPackage: String,
@@ -166,14 +241,17 @@ fun DelayScreen(
     var cooldownRemainingSec by remember { mutableStateOf((initialCooldownMs / 1000).toInt().coerceAtLeast(1)) }
     var isLoaded by remember { mutableStateOf(false) }
     var earningTime by remember { mutableStateOf(false) }
+    var intentionPlan by remember { mutableStateOf("") }
+    // Why the user is opening the app — chosen on the first step of the pause (null until then).
+    var reason by remember { mutableStateOf<EntryReason?>(null) }
 
-    // Read general conscious delay seconds
+    // Read the user's settings (delay length + their own if-then plan)
     LaunchedEffect(Unit) {
         val db = AppDatabase.getDatabase(context)
         val repository = SettingRepository(db.settingDao())
-        val delaySetting = repository.getDelaySeconds()
-        totalSeconds = delaySetting
-        secondsLeft = delaySetting
+        totalSeconds = repository.getDelaySeconds()
+        secondsLeft = repository.getDelaySeconds()
+        intentionPlan = repository.getIntentionPlan()
         isLoaded = true
     }
 
@@ -189,29 +267,36 @@ fun DelayScreen(
 
     val progressAnim = remember { Animatable(1f) }
 
-    // Sync timer mechanics
-    LaunchedEffect(isCooldownMode, totalSeconds) {
+    // A purposeful reason gets a short, respectful beat; aimless ones get the full pause.
+    val effectiveSeconds = when (reason) {
+        EntryReason.MESSAGE, EntryReason.SPECIFIC -> minOf(totalSeconds, 2)
+        else -> totalSeconds
+    }
+
+    // Timer: cooldown counts down to the end of the focus block; the pause counts the breath.
+    LaunchedEffect(isCooldownMode, reason, effectiveSeconds, isLoaded) {
+        if (!isLoaded) return@LaunchedEffect
         if (isCooldownMode) {
-            // Cooldown ticker loop
             while (cooldownRemainingSec > 0) {
                 delay(1000L)
                 cooldownRemainingSec--
             }
-            onCancel() // Close lock screen once punishment expires
+            onCancel() // Close the focus-block screen once it naturally ends
         } else {
-            // General countdown
+            if (reason == null) return@LaunchedEffect // still on the intention step
+            secondsLeft = effectiveSeconds
             progressAnim.snapTo(1f)
             launch {
                 progressAnim.animateTo(
                     targetValue = 0f,
                     animationSpec = tween(
-                        durationMillis = totalSeconds * 1000,
+                        durationMillis = effectiveSeconds * 1000,
                         easing = LinearEasing
                     )
                 )
             }
 
-            for (i in totalSeconds downTo 1) {
+            for (i in effectiveSeconds downTo 1) {
                 secondsLeft = i
                 delay(1000L)
             }
@@ -227,7 +312,7 @@ fun DelayScreen(
         else -> "Aplikacji"
     }
 
-    // During odwyk the user can buy bonus time by solving a streak of hard questions.
+    // During a focus block the user can earn a few minutes by solving a streak of hard questions.
     if (isCooldownMode && earningTime) {
         QuizScreen(
             modifier = modifier,
@@ -237,36 +322,34 @@ fun DelayScreen(
         return
     }
 
-    // Dopamine / Detox education facts with premium typography weight
-    val facts = listOf(
-        Pair(
-            "🧠 DOPAMINOWA PĘTLA",
-            "Uruchomienie social mediów powoduje nagły skok dopaminy o ponad 150%. To sztucznie przeciąża mózg i niszczy naturalną motywację."
-        ),
-        Pair(
-            "⏱️ KRADZIEŻ CZASU",
-            "Przeciętna sesja trwa aż 28 minut, choć planujemy wejść tylko na sekundę. Tracisz bezpowrotnie ponad 200 godzin rocznie!"
-        ),
-        Pair(
-            "💔 USZKODZENIE SKUPIENIA",
-            "Krótkie wideo niszczą zdolność do głębokiej koncentracji. Uszczerbek uwagi utrzymuje się nawet do 2 godzin po odłożeniu telefonu."
-        ),
-        Pair(
-            "🎰 UKŁAD UZALEŻNIEŃ",
-            "Mechanizm nieskończonego przewijania (feed) działa dokładnie jak jednoręki bandyta. Został celowo zaprojektowany, by wywołać przymus."
-        ),
-        Pair(
-            "🧘 RESET IMPULSU",
-            "Pauza, którą właśnie robisz, pozwala korze przedczołowej przejąć kontrolę. 5-10 sekund wystarcza, by opanować automatyczny nawyk."
-        ),
-        Pair(
-            "🌳 AUTONOMICZNA NUDA",
-            "Ciągłe bodźce blokują naturalne procesy myślowe. Nuda jest kluczowa dla kreatywności i regeneracji układu nerwowego."
+    // Intention-first: ask why before adding any friction (implementation-intention + self-monitoring).
+    if (!isCooldownMode && reason == null) {
+        IntentionScreen(
+            appDisplayName = appDisplayName,
+            modifier = modifier,
+            onPick = { reason = it }
         )
-    )
+        return
+    }
 
-    var currentFactIndex by remember { mutableStateOf((facts.indices).random()) }
-    val currentFact = facts[currentFactIndex]
+    // What to reflect on while the breath runs — the user's own plan, or a calm, honest nudge.
+    val cardLabel = when {
+        isCooldownMode -> "TWÓJ BLOK SKUPIENIA"
+        intentionPlan.isNotBlank() -> "TWÓJ PLAN"
+        else -> "NA SPOKOJNIE"
+    }
+    val cardBody = when {
+        isCooldownMode ->
+            "Ten czas wybrałeś dla siebie. Świat poczeka — wrócisz do tego za chwilę."
+        intentionPlan.isNotBlank() ->
+            intentionPlan
+        reason == EntryReason.BORED ->
+            "Nuda to nie problem do rozwiązania. Daj jej chwilę — często pomysł przychodzi sam."
+        reason == EntryReason.BROWSING ->
+            "Przeglądasz bez celu i to jest OK. Pytanie tylko: czy teraz naprawdę tego chcesz?"
+        else ->
+            "Wejdź, zrób swoje i wyjdź. Trzymam kciuki."
+    }
 
     // Pure Clean Black & White Meditative Grid Layout
     Column(
@@ -283,14 +366,14 @@ fun DelayScreen(
             modifier = Modifier.padding(top = 16.dp)
         ) {
             Text(
-                text = if (isCooldownMode) "TRYB COOLDOWN • ZABLOKOWANE" else "ŚWIADOMY ODDECH",
+                text = if (isCooldownMode) "BLOK SKUPIENIA" else "ŚWIADOMY ODDECH",
                 color = Color.White.copy(alpha = 0.4f),
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
                 letterSpacing = 2.sp
             )
             Text(
-                text = if (isCooldownMode) "Twój czas na $appDisplayName dobiegł końca" else "Wchodzisz na aplikację $appDisplayName",
+                text = if (isCooldownMode) "Robisz sobie przerwę od $appDisplayName" else "Za chwilę otworzysz $appDisplayName",
                 color = Color.White,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Light,
@@ -337,7 +420,7 @@ fun DelayScreen(
                         letterSpacing = (-1).sp
                     )
                     Text(
-                        text = "odwyk trwa",
+                        text = "do końca przerwy",
                         color = Color.White.copy(alpha = 0.4f),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Normal,
@@ -362,7 +445,7 @@ fun DelayScreen(
             }
         }
 
-        // High-readability educational dopamine facts (Deep Zen black focus card, larger readable typography)
+        // Calm reflection card: the user's own plan, or an honest, non-shaming nudge.
         Surface(
             color = Color(0xFF0F0F12),
             shape = RoundedCornerShape(12.dp),
@@ -375,44 +458,19 @@ fun DelayScreen(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = currentFact.first,
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.5.sp
-                    )
-
-                    Text(
-                        text = "LOSUJ 🔄",
-                        color = Color.White.copy(alpha = 0.4f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable {
-                                var newIndex = currentFactIndex
-                                while (newIndex == currentFactIndex && facts.size > 1) {
-                                    newIndex = (facts.indices).random()
-                                }
-                                currentFactIndex = newIndex
-                            }
-                            .padding(4.dp)
-                    )
-                }
-
-                // Fact Body with enhanced large typography
                 Text(
-                    text = currentFact.second,
+                    text = cardLabel,
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.5.sp
+                )
+                Text(
+                    text = cardBody,
                     color = Color.White.copy(alpha = 0.85f),
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    fontWeight = FontWeight.Normal
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    fontWeight = FontWeight.Light
                 )
             }
         }
@@ -435,7 +493,7 @@ fun DelayScreen(
                         .height(52.dp)
                 ) {
                     Text(
-                        text = "Zarób +${DelayActivity.BONUS_MINUTES} min · ${DelayActivity.QUIZ_STREAK_GOAL} zagadki",
+                        text = "Muszę wejść — ${DelayActivity.QUIZ_STREAK_GOAL} zagadki (+${DelayActivity.BONUS_MINUTES} min)",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
@@ -451,7 +509,7 @@ fun DelayScreen(
                         .height(52.dp)
                 ) {
                     Text(
-                        text = "Wytrzymam odwyk",
+                        text = "Zostawiam to na teraz",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Normal,
                         letterSpacing = 0.5.sp
@@ -476,7 +534,7 @@ fun DelayScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Rezygnuję (Uratuj swój czas)",
+                        text = "Odpuszczam — odzyskuję chwilę",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
