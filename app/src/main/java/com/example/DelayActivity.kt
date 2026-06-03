@@ -12,6 +12,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,8 +32,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import com.example.data.AppDatabase
 import com.example.data.AppDelayManager
+import com.example.data.Quiz
+import com.example.data.QuizGenerator
 import com.example.data.SettingRepository
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.delay
@@ -75,6 +79,9 @@ class DelayActivity : ComponentActivity() {
                         },
                         onCancel = {
                             goHomeAndFinish()
+                        },
+                        onEarnedReward = {
+                            earnBonusTimeAndLaunch()
                         }
                     )
                 }
@@ -82,10 +89,25 @@ class DelayActivity : ComponentActivity() {
         }
     }
 
+    /** Conscious pause finished: start a usage session sized by the user's cooldown settings. */
     private fun launchTargetApp() {
         Log.d(TAG, "Pause finished, allowing $targetPackage")
-        AppDelayManager.grantAccess(targetPackage)
+        lifecycleScope.launch {
+            val repository = SettingRepository(AppDatabase.getDatabase(this@DelayActivity).settingDao())
+            val sessionLimit = if (repository.isCooldownEnabled()) repository.getCooldownUsageMinutes() else 0
+            AppDelayManager.grantAccess(targetPackage, sessionLimit)
+            launchPackageAndFinish()
+        }
+    }
 
+    /** The user earned their way out of odwyk: grant the bonus session and let them in. */
+    private fun earnBonusTimeAndLaunch() {
+        Log.d(TAG, "Bonus time earned for $targetPackage")
+        AppDelayManager.grantBonusTime(targetPackage, BONUS_MINUTES)
+        launchPackageAndFinish()
+    }
+
+    private fun launchPackageAndFinish() {
         try {
             val intent = packageManager.getLaunchIntentForPackage(targetPackage)
             if (intent != null) {
@@ -118,6 +140,10 @@ class DelayActivity : ComponentActivity() {
     companion object {
         private const val TAG = "DelayActivity"
 
+        /** Correct answers needed in a row to earn bonus time, and the reward. */
+        const val QUIZ_STREAK_GOAL = 3
+        const val BONUS_MINUTES = 5
+
         const val EXTRA_TARGET_PACKAGE = "target_package"
         const val EXTRA_IS_COOLDOWN = "is_cooldown"
         const val EXTRA_COOLDOWN_REMAINING_MS = "cooldown_remaining_ms"
@@ -131,13 +157,15 @@ fun DelayScreen(
     initialCooldownMs: Long,
     modifier: Modifier = Modifier,
     onDelayFinished: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onEarnedReward: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var totalSeconds by remember { mutableStateOf(5) }
     var secondsLeft by remember { mutableStateOf(5) }
     var cooldownRemainingSec by remember { mutableStateOf((initialCooldownMs / 1000).toInt().coerceAtLeast(1)) }
     var isLoaded by remember { mutableStateOf(false) }
+    var earningTime by remember { mutableStateOf(false) }
 
     // Read general conscious delay seconds
     LaunchedEffect(Unit) {
@@ -199,6 +227,16 @@ fun DelayScreen(
         else -> "Aplikacji"
     }
 
+    // During odwyk the user can buy bonus time by solving a streak of hard questions.
+    if (isCooldownMode && earningTime) {
+        QuizScreen(
+            modifier = modifier,
+            onSolved = onEarnedReward,
+            onGiveUp = { earningTime = false }
+        )
+        return
+    }
+
     // Dopamine / Detox education facts with premium typography weight
     val facts = listOf(
         Pair(
@@ -252,7 +290,7 @@ fun DelayScreen(
                 letterSpacing = 2.sp
             )
             Text(
-                text = if (isCooldownMode) "Twoje 5 minut na $appDisplayName dobiegło końca" else "Wchodzisz na aplikację $appDisplayName",
+                text = if (isCooldownMode) "Twój czas na $appDisplayName dobiegł końca" else "Wchodzisz na aplikację $appDisplayName",
                 color = Color.White,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Light,
@@ -379,28 +417,198 @@ fun DelayScreen(
             }
         }
 
-        // Action Trigger Cancel Bar
-        Button(
-            onClick = onCancel,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color.White,
-                contentColor = Color.Black
-            ),
+        // Action bar: during odwyk, offer to earn bonus time; otherwise just bail out.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (isCooldownMode) {
+                Button(
+                    onClick = { earningTime = true },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                ) {
+                    Text(
+                        text = "Zarób +${DelayActivity.BONUS_MINUTES} min · ${DelayActivity.QUIZ_STREAK_GOAL} zagadki",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                OutlinedButton(
+                    onClick = onCancel,
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                ) {
+                    Text(
+                        text = "Wytrzymam odwyk",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Normal,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+            } else {
+                Button(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cancel Icon",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Rezygnuję (Uratuj swój czas)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The "earn bonus time" flow shown during odwyk: answer [DelayActivity.QUIZ_STREAK_GOAL] hard
+ * questions in a row (a wrong answer resets the streak) to unlock bonus scrolling minutes.
+ */
+@Composable
+private fun QuizScreen(
+    modifier: Modifier = Modifier,
+    onSolved: () -> Unit,
+    onGiveUp: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var streak by remember { mutableStateOf(0) }
+    var quiz by remember { mutableStateOf(QuizGenerator.next()) }
+    var selectedIndex by remember { mutableStateOf(-1) }
+    var locked by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier
+            .background(Color(0xFF000000))
+            .padding(horizontal = 28.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Header + streak progress
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(top = 16.dp)
+        ) {
+            Text(
+                text = "ZARÓB CZAS • ${streak}/${DelayActivity.QUIZ_STREAK_GOAL}",
+                color = Color.White.copy(alpha = 0.4f),
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 2.sp
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(DelayActivity.QUIZ_STREAK_GOAL) { i ->
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(RoundedCornerShape(100))
+                            .background(if (i < streak) Color.White else Color.White.copy(alpha = 0.15f))
+                    )
+                }
+            }
+        }
+
+        // Question
+        Text(
+            text = quiz.prompt,
+            color = Color.White,
+            fontSize = 19.sp,
+            lineHeight = 27.sp,
+            fontWeight = FontWeight.Light,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        // Answer options
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            quiz.options.forEachIndexed { index, option ->
+                val isCorrect = index == quiz.correctIndex
+                val borderColor = when {
+                    !locked -> Color.White.copy(alpha = 0.15f)
+                    isCorrect -> Color(0xFF10B981)
+                    index == selectedIndex -> Color(0xFFEF4444)
+                    else -> Color.White.copy(alpha = 0.1f)
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+                        .clickable(enabled = !locked) {
+                            selectedIndex = index
+                            locked = true
+                            val correct = index == quiz.correctIndex
+                            scope.launch {
+                                delay(650L)
+                                if (correct) {
+                                    streak += 1
+                                    if (streak >= DelayActivity.QUIZ_STREAK_GOAL) {
+                                        onSolved()
+                                        return@launch
+                                    }
+                                } else {
+                                    streak = 0
+                                }
+                                quiz = QuizGenerator.next()
+                                selectedIndex = -1
+                                locked = false
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 16.dp)
+                ) {
+                    Text(
+                        text = option,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+            }
+        }
+
+        OutlinedButton(
+            onClick = onGiveUp,
             shape = RoundedCornerShape(8.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Cancel Icon",
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Rezygnuję (Uratuj swój czas)",
+                text = "Poddaję się",
                 fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Normal,
                 letterSpacing = 0.5.sp
             )
         }
