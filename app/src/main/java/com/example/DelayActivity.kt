@@ -31,7 +31,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
 import com.example.data.AppDatabase
 import com.example.data.AppDelayManager
 import com.example.data.SettingRepository
@@ -49,17 +48,14 @@ class DelayActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        targetPackage = intent.getStringExtra("target_package") ?: ""
-        isCooldownMode = intent.getBooleanExtra("is_cooldown", false)
-        cooldownRemainingMs = intent.getSerializableExtra("cooldown_remaining_ms") as? Long ?: intent.getLongExtra("cooldown_remaining_ms", 0L)
+        targetPackage = intent.getStringExtra(EXTRA_TARGET_PACKAGE) ?: ""
+        isCooldownMode = intent.getBooleanExtra(EXTRA_IS_COOLDOWN, false)
+        cooldownRemainingMs = intent.getLongExtra(EXTRA_COOLDOWN_REMAINING_MS, 0L)
 
         if (targetPackage.isEmpty()) {
             finish()
             return
         }
-
-        // Lock accessibility checks to show that the activity is active
-        AppDelayManager.setDelayActivityActive(true)
 
         setContent {
             MyApplicationTheme {
@@ -86,44 +82,9 @@ class DelayActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        AppDelayManager.setDelayActivityActive(true)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        AppDelayManager.setDelayActivityActive(true)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        // Keep active true on pause since standard activity redirections might briefly pause us
-    }
-
-    override fun onStop() {
-        AppDelayManager.setDelayActivityActive(false)
-        super.onStop()
-    }
-
-    override fun onDestroy() {
-        AppDelayManager.setDelayActivityActive(false)
-        super.onDestroy()
-    }
-
     private fun launchTargetApp() {
-        Log.d("DelayActivity", "Countdown finished. Allowing and launching $targetPackage")
-        AppDelayManager.whitelistPackage(targetPackage)
-        
-        // Start cooldown session if active
-        lifecycleScope.launch {
-            val db = AppDatabase.getDatabase(this@DelayActivity)
-            val repository = SettingRepository(db.settingDao())
-            if (repository.isCooldownEnabled()) {
-                val duration = repository.getCooldownUsageMinutes()
-                AppDelayManager.startSession(targetPackage, duration)
-            }
-        }
+        Log.d(TAG, "Pause finished, allowing $targetPackage")
+        AppDelayManager.grantAccess(targetPackage)
 
         try {
             val intent = packageManager.getLaunchIntentForPackage(targetPackage)
@@ -131,12 +92,11 @@ class DelayActivity : ComponentActivity() {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
             } else {
-                Log.e("DelayActivity", "Failed to get launch intent for $targetPackage")
+                Log.e(TAG, "No launch intent for $targetPackage")
             }
         } catch (e: Exception) {
-            Log.e("DelayActivity", "Error launching $targetPackage", e)
+            Log.e(TAG, "Error launching $targetPackage", e)
         } finally {
-            AppDelayManager.setDelayActivityActive(false)
             finish()
         }
     }
@@ -147,13 +107,20 @@ class DelayActivity : ComponentActivity() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         startActivity(homeIntent)
-        AppDelayManager.setDelayActivityActive(false)
         finish()
     }
 
     @Deprecated("Deprecated in Java", ReplaceWith("goHomeAndFinish()"))
     override fun onBackPressed() {
         goHomeAndFinish()
+    }
+
+    companion object {
+        private const val TAG = "DelayActivity"
+
+        const val EXTRA_TARGET_PACKAGE = "target_package"
+        const val EXTRA_IS_COOLDOWN = "is_cooldown"
+        const val EXTRA_COOLDOWN_REMAINING_MS = "cooldown_remaining_ms"
     }
 }
 
