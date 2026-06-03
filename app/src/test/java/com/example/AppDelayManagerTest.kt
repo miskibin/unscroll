@@ -8,8 +8,8 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Covers the access/cooldown state machine that decides whether a blocked app needs a pause.
- * These are the rules that previously misfired and closed apps mid-use.
+ * Covers the access/cooldown/emergency state machine that decides whether a blocked app needs
+ * a pause. These are the rules that previously misfired and closed apps mid-use.
  */
 class AppDelayManagerTest {
 
@@ -18,6 +18,7 @@ class AppDelayManagerTest {
     @Before
     fun reset() {
         AppDelayManager.clearGrant()
+        AppDelayManager.cancelEmergencyDisable()
         // Expire any lingering cooldown from a previous test.
         AppDelayManager.startCooldown(instagram, 0)
         AppDelayManager.clearGrant()
@@ -37,7 +38,6 @@ class AppDelayManagerTest {
     @Test
     fun `staying inside the app keeps access - the comment-section case`() {
         AppDelayManager.grantAccess(instagram)
-        // Simulate many internal navigation events.
         repeat(50) { AppDelayManager.keepAlive(instagram) }
         assertTrue(AppDelayManager.isAccessGranted(instagram))
     }
@@ -65,11 +65,43 @@ class AppDelayManagerTest {
     }
 
     @Test
-    fun `session countdown reflects the configured limit`() {
-        AppDelayManager.grantAccess(instagram)
-        val remaining = AppDelayManager.sessionRemainingMs(instagram, limitMinutes = 5)
-        // Allow a little slack for execution time.
+    fun `unlimited grant reports no session limit`() {
+        AppDelayManager.grantAccess(instagram, sessionLimitMinutes = 0)
+        assertEquals(AppDelayManager.NO_SESSION_LIMIT, AppDelayManager.sessionRemainingMs(instagram))
+    }
+
+    @Test
+    fun `limited grant counts down from the configured limit`() {
+        AppDelayManager.grantAccess(instagram, sessionLimitMinutes = 5)
+        val remaining = AppDelayManager.sessionRemainingMs(instagram)
         assertTrue(remaining in (5 * 60_000L - 2_000L)..(5 * 60_000L))
+    }
+
+    @Test
+    fun `earning bonus time clears cooldown and opens a short session`() {
+        AppDelayManager.startCooldown(instagram, 10)
+        AppDelayManager.grantBonusTime(instagram, minutes = 5)
+
+        assertEquals(0L, AppDelayManager.cooldownRemainingMs(instagram))
+        assertTrue(AppDelayManager.isAccessGranted(instagram))
+        val remaining = AppDelayManager.sessionRemainingMs(instagram)
+        assertTrue(remaining in (5 * 60_000L - 2_000L)..(5 * 60_000L))
+    }
+
+    @Test
+    fun `emergency disable is active for the chosen window`() {
+        assertFalse(AppDelayManager.isEmergencyDisabled())
+        AppDelayManager.startEmergencyDisable(20)
+        assertTrue(AppDelayManager.isEmergencyDisabled())
+        assertTrue(AppDelayManager.emergencyRemainingMs() > 0L)
+    }
+
+    @Test
+    fun `emergency disable can be cancelled`() {
+        AppDelayManager.startEmergencyDisable(20)
+        AppDelayManager.cancelEmergencyDisable()
+        assertFalse(AppDelayManager.isEmergencyDisabled())
+        assertEquals(0L, AppDelayManager.emergencyRemainingMs())
     }
 
     @Test

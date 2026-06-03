@@ -33,7 +33,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.AppDelayManager
 import com.example.ui.theme.MyApplicationTheme
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -227,6 +229,16 @@ fun DashboardScreen(
                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
             }
 
+            // Emergency disable back door
+            item {
+                EmergencyDisableSection()
+            }
+
+            // Divider
+            item {
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
+            }
+
             // Delay Selector Option Area
             item {
                 DelaySelectorSection(
@@ -316,6 +328,98 @@ fun DashboardScreen(
                                 fontWeight = FontWeight.Normal
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EmergencyDisableSection() {
+    var remainingMs by remember { mutableStateOf(AppDelayManager.emergencyRemainingMs()) }
+
+    // Tick the live countdown while the screen is shown.
+    LaunchedEffect(Unit) {
+        while (true) {
+            remainingMs = AppDelayManager.emergencyRemainingMs()
+            delay(1000L)
+        }
+    }
+
+    val active = remainingMs > 0L
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "AWARYJNE WYŁĄCZENIE",
+            color = Color.White.copy(alpha = 0.4f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp
+        )
+
+        if (active) {
+            val totalSec = (remainingMs / 1000).toInt()
+            Text(
+                text = "Ochrona wyłączona — wraca za " +
+                    String.format("%02d:%02d", totalSec / 60, totalSec % 60),
+                color = Color(0xFFFBBF24),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Light
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                    .clickable {
+                        AppDelayManager.cancelEmergencyDisable()
+                        remainingMs = 0L
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Włącz ochronę ponownie",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        } else {
+            Text(
+                text = "Całkowicie wyłącz pauzy i odwyk na wybrany czas",
+                color = Color.White.copy(alpha = 0.45f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Light
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(5, 10, 20).forEach { minutes ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
+                            .clickable {
+                                AppDelayManager.startEmergencyDisable(minutes)
+                                remainingMs = AppDelayManager.emergencyRemainingMs()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "$minutes min",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Light
+                        )
                     }
                 }
             }

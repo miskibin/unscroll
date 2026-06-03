@@ -27,8 +27,6 @@ class DelayAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     @Volatile private var blockedPackages: Set<String> = emptySet()
-    @Volatile private var cooldownEnabled = false
-    @Volatile private var usageLimitMinutes = SettingRepository.DEFAULT_COOLDOWN_USAGE_MINUTES
     @Volatile private var cooldownMinutes = SettingRepository.DEFAULT_COOLDOWN_PERIOD_MINUTES
 
     /** Last real (non-transient) app seen in the foreground. */
@@ -60,6 +58,9 @@ class DelayAccessibilityService : AccessibilityService() {
     }
 
     private fun handleBlockedApp(pkg: String) {
+        // The emergency back door switches off all interception for its window.
+        if (AppDelayManager.isEmergencyDisabled()) return
+
         val cooldownRemaining = AppDelayManager.cooldownRemainingMs(pkg)
         if (cooldownRemaining > 0L) {
             openPauseScreen(pkg, cooldownRemainingMs = cooldownRemaining)
@@ -68,7 +69,7 @@ class DelayAccessibilityService : AccessibilityService() {
 
         if (AppDelayManager.isAccessGranted(pkg)) {
             AppDelayManager.keepAlive(pkg)
-            if (cooldownEnabled) scheduleSessionLimit(pkg)
+            scheduleSessionLimit(pkg)
             return
         }
 
@@ -80,9 +81,14 @@ class DelayAccessibilityService : AccessibilityService() {
     /** Lock the app once the usage session runs out, but never mid-action of another app. */
     private fun scheduleSessionLimit(pkg: String) {
         cancelSessionLimit()
+        val remaining = AppDelayManager.sessionRemainingMs(pkg)
+        if (remaining == AppDelayManager.NO_SESSION_LIMIT) return // unlimited session, nothing to arm
         sessionLimitJob = scope.launch {
-            delay(AppDelayManager.sessionRemainingMs(pkg, usageLimitMinutes))
-            if (foregroundApp == pkg && AppDelayManager.cooldownRemainingMs(pkg) == 0L) {
+            delay(remaining)
+            if (foregroundApp == pkg &&
+                !AppDelayManager.isEmergencyDisabled() &&
+                AppDelayManager.cooldownRemainingMs(pkg) == 0L
+            ) {
                 Log.d(TAG, "Usage limit reached for $pkg, starting cooldown")
                 AppDelayManager.startCooldown(pkg, cooldownMinutes)
                 openPauseScreen(pkg, cooldownRemainingMs = cooldownMinutes * 60_000L)
@@ -137,8 +143,6 @@ class DelayAccessibilityService : AccessibilityService() {
                 blockedPackages = csv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             }
         }
-        scope.launch { repository.cooldownEnabledFlow.collect { cooldownEnabled = it } }
-        scope.launch { repository.cooldownUsageMinutesFlow.collect { usageLimitMinutes = it } }
         scope.launch { repository.cooldownPeriodMinutesFlow.collect { cooldownMinutes = it } }
     }
 
