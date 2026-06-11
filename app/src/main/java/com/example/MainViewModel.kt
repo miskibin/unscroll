@@ -1,106 +1,42 @@
 package com.example
 
 import android.app.Application
+import android.content.Context
+import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import com.example.data.AppDatabase
-import com.example.data.SettingRepository
-import kotlinx.coroutines.flow.SharingStarted
+import com.example.data.BudgetSnapshot
+import com.example.data.GuardSettings
+import com.example.data.GuardState
+import com.example.data.SettingsStore
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: SettingRepository
+    private val store = SettingsStore.get(application)
 
-    val delaySeconds: StateFlow<Int>
-    val blockedPackages: StateFlow<String>
-    val cooldownEnabled: StateFlow<Boolean>
-    val cooldownUsageMinutes: StateFlow<Int>
-    val cooldownPeriodMinutes: StateFlow<Int>
-    val intentionPlan: StateFlow<String>
+    val settings: StateFlow<GuardSettings> = store.settings
+    val budget: StateFlow<BudgetSnapshot> = GuardState.budget
+    val serviceRunning: StateFlow<Boolean> = GuardState.serviceRunning
 
-    init {
-        val database = AppDatabase.getDatabase(application)
-        repository = SettingRepository(database.settingDao())
-        
-        delaySeconds = repository.delaySecondsFlow
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000L),
-                initialValue = SettingRepository.DEFAULT_DELAY_SECONDS
-            )
+    private val _serviceEnabledInSystem = MutableStateFlow(false)
+    val serviceEnabledInSystem: StateFlow<Boolean> = _serviceEnabledInSystem
 
-        blockedPackages = repository.blockedPackagesFlow
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000L),
-                initialValue = SettingRepository.DEFAULT_BLOCKED_PACKAGES
-            )
-
-        cooldownEnabled = repository.cooldownEnabledFlow
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000L),
-                initialValue = false
-            )
-
-        cooldownUsageMinutes = repository.cooldownUsageMinutesFlow
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000L),
-                initialValue = SettingRepository.DEFAULT_COOLDOWN_USAGE_MINUTES
-            )
-
-        cooldownPeriodMinutes = repository.cooldownPeriodMinutesFlow
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000L),
-                initialValue = SettingRepository.DEFAULT_COOLDOWN_PERIOD_MINUTES
-            )
-
-        intentionPlan = repository.intentionPlanFlow
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000L),
-                initialValue = SettingRepository.DEFAULT_INTENTION_PLAN
-            )
+    fun refreshServiceState() {
+        _serviceEnabledInSystem.value = isAccessibilityServiceEnabled(getApplication())
     }
 
-    fun updateDelaySeconds(seconds: Int) {
-        viewModelScope.launch {
-            repository.setDelaySeconds(seconds)
-        }
-    }
+    fun setEnabled(value: Boolean) = store.setEnabled(value)
+    fun setAllowanceSeconds(value: Int) = store.setAllowanceSeconds(value)
+    fun setWindowMinutes(value: Int) = store.setWindowMinutes(value)
+    fun setPlatformEnabled(key: String, enabled: Boolean) = store.setPlatformEnabled(key, enabled)
 
-    fun updateBlockedPackages(packages: String) {
-        viewModelScope.launch {
-            repository.setBlockedPackages(packages)
-        }
-    }
-
-    fun updateCooldownEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.setCooldownEnabled(enabled)
-        }
-    }
-
-    fun updateCooldownUsageMinutes(minutes: Int) {
-        viewModelScope.launch {
-            repository.setCooldownUsageMinutes(minutes)
-        }
-    }
-
-    fun updateCooldownPeriodMinutes(minutes: Int) {
-        viewModelScope.launch {
-            repository.setCooldownPeriodMinutes(minutes)
-        }
-    }
-
-    fun updateIntentionPlan(plan: String) {
-        viewModelScope.launch {
-            repository.setIntentionPlan(plan)
-        }
+    private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+        val component = "${context.packageName}/${ScrollGuardService::class.java.name}"
+        val enabled = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        ) ?: return false
+        return enabled.split(':').any { it.equals(component, ignoreCase = true) }
     }
 }
