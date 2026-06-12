@@ -1,3 +1,31 @@
 <resources>
-    <string name="app_name">ZenDelay</string>
+    <string name="app_name">Unscroll</string>
+    <string name="accessibility_service_label">Unscroll — short-form feed limiter</string>
+    <string name="accessibility_service_description">Unscroll uses this service to recognise when a short-form video feed (Instagram Reels, YouTube Shorts, TikTok) is on screen, so it can limit endless scrolling. It only inspects view identifiers of the supported apps. Nothing is read, stored or sent anywhere; messages and the rest of each app are never touched.</string>
+
+    <string name="toast_limit_reached">Scroll limit reached — refills in %1$d min</string>
+
+    <string name="status_active">Active</string>
+    <string name="status_paused">Paused</string>
+    <string name="status_service_off">Service off</string>
+
+    <string name="setup_title">One-time setup</string>
+    <string name="setup_body">Unscroll needs the accessibility service to see when a Reels / Shorts / TikTok feed is open. Enable “%1$s” in the list.</string>
+    <string name="setup_button">Open accessibility settings</string>
+
+    <string name="budget_remaining">left to scroll</string>
+    <string name="budget_refills_in">refills in %1$s</string>
+    <string name="budget_full">full allowance available</string>
+    <string name="budget_locked">locked — refills in %1$s</string>
+
+    <string name="master_switch_title">Limit short-form feeds</string>
+    <string name="master_switch_body">Only Reels, Shorts and TikTok feeds are limited. DMs, search and everything else stay open.</string>
+
+    <string name="rules_title">Your rule</string>
+    <string name="rules_allowance">Scroll time</string>
+    <string name="rules_window">Every</string>
+    <string name="minutes_short">%1$d min</string>
+    <string name="seconds_short">%1$d s</string>
+
+    <string name="apps_title">Limited feeds</string>
 </resources>

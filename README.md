@@ -1,21 +1,41 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Unscroll
 
-# Run and deploy your AI Studio app
+Block the *endless scrolling*, not the apps.
 
-This contains everything you need to run your app locally.
+Unscroll limits short-form video feeds — **Instagram Reels, YouTube Shorts and
+TikTok's For You feed** — while leaving the rest of each app alone. DMs,
+search, profiles and normal videos always work.
 
-View your app in AI Studio: https://ai.studio/apps/e3c46739-b60e-47a1-a2b7-391274897b13
+## How it works
 
-## Run Locally
+You get a scroll allowance (default **2 minutes every 10 minutes**, both
+configurable). An accessibility service recognises when a short-form feed is
+on screen by looking at the view ids of the supported apps:
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+| App | Detection |
+| --- | --- |
+| Instagram | `clips_viewer_view_pager` (the fullscreen Reels viewer) |
+| YouTube | `reel_recycler` / `reel_progress_bar` (the Shorts player) |
+| TikTok | `video_container` + full-screen ViewPager heuristic (best effort — TikTok obfuscates its ids) |
 
+While a feed is visible, watch time is charged against the allowance. When it
+runs out, Unscroll presses **Back** (rate limited, never more than once per
+2 s) and shows a toast with the time until the allowance refills. No
+activities are launched, you are never thrown to the home screen, and nothing
+happens unless a feed is *positively* detected while the master switch is on.
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+The service only receives events from the supported packages
+(`android:packageNames` in the service config) and never reads, stores or
+transmits screen content.
+
+## Build
+
+**Prerequisites:** [Android Studio](https://developer.android.com/studio) or
+an Android SDK + Gradle 8.14+.
+
+1. Open the project in Android Studio (or run `gradle :app:assembleDebug`).
+2. The debug build signs with `debug.keystore` in the repo root.
+3. Install on a device, open Unscroll and follow the one-time setup to enable
+   the accessibility service.
+
+Run unit tests with `gradle :app:testDebugUnitTest`.

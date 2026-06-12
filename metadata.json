@@ -1,6 +1,6 @@
 {
-  "name": "ZenDelay",
-  "description": "Aplikacja opóźniająca uruchamianie Instagrama i TikToka, pomagająca przełamać nawyk bezmyślnego doomscrollowania za pomocą ćwiczeń oddechowych.",
+  "name": "Unscroll",
+  "description": "Blokuje niekończące się przewijanie krótkich wideo (Instagram Reels, YouTube Shorts, TikTok) zamiast całych aplikacji. Limit np. 2 minuty scrollowania co 10 minut; wiadomości i reszta aplikacji działają normalnie.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

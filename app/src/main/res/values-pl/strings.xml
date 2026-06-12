@@ -1,0 +1,31 @@
+<resources>
+    <string name="app_name">Unscroll</string>
+    <string name="accessibility_service_label">Unscroll — limit krótkich wideo</string>
+    <string name="accessibility_service_description">Unscroll używa tej usługi, aby rozpoznać, kiedy na ekranie jest feed krótkich wideo (Instagram Reels, YouTube Shorts, TikTok) i ograniczyć niekończące się przewijanie. Sprawdzane są wyłącznie identyfikatory widoków obsługiwanych aplikacji. Nic nie jest odczytywane, zapisywane ani wysyłane; wiadomości i reszta aplikacji pozostają nietknięte.</string>
+
+    <string name="toast_limit_reached">Limit scrollowania wyczerpany — odnowi się za %1$d min</string>
+
+    <string name="status_active">Aktywny</string>
+    <string name="status_paused">Wstrzymany</string>
+    <string name="status_service_off">Usługa wyłączona</string>
+
+    <string name="setup_title">Jednorazowa konfiguracja</string>
+    <string name="setup_body">Unscroll potrzebuje usługi ułatwień dostępu, aby widzieć, kiedy otwarty jest feed Reels / Shorts / TikTok. Włącz „%1$s” na liście.</string>
+    <string name="setup_button">Otwórz ustawienia ułatwień dostępu</string>
+
+    <string name="budget_remaining">zostało na scrollowanie</string>
+    <string name="budget_refills_in">odnowi się za %1$s</string>
+    <string name="budget_full">pełny limit dostępny</string>
+    <string name="budget_locked">zablokowane — odnowi się za %1$s</string>
+
+    <string name="master_switch_title">Ograniczaj krótkie wideo</string>
+    <string name="master_switch_body">Ograniczane są tylko Reels, Shorts i feed TikToka. Wiadomości, wyszukiwanie i cała reszta działają normalnie.</string>
+
+    <string name="rules_title">Twoja zasada</string>
+    <string name="rules_allowance">Czas scrollowania</string>
+    <string name="rules_window">Co</string>
+    <string name="minutes_short">%1$d min</string>
+    <string name="seconds_short">%1$d s</string>
+
+    <string name="apps_title">Ograniczane feedy</string>
+</resources>
